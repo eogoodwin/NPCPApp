@@ -1,0 +1,55 @@
+
+
+<H1>Assessment of long-term consistency</H1>
+
+<p>The DairyNZ::NPCP app was co-developed by Craig Depree (DairyNZ) and  Eric Goodwin (Cawthron Institute), programmed by Eric Goodwin, and funded by DairyNZ.  Data used in the app were downloaded from the Environmental Monitoring and Reporting Project's "Land, Air, Water Aotearoa" website accessible at www.lawa.org.nz. Data are covered by "CC BY 4.0" and by terms of use listed on the LAWA website.  This app and the use of the LAWA dataset is intended as a means of evaluating the suitability of the embodied assessment methodology, which is described below.</p>
+
+<p>Operation of this app consists of first selecting a monitoring site from those displayed on the national map.  You can zoom in or out and pan to identify the site of choice.  Hovering over the point will display the site's name.  Once a site is selected, text below the map will tell you which attributes have been measured at that site, and can be analysed for long-term consistency.</p>
+
+<p>One of the attributes is selected by default, and its data will be displayed.  You can select one of the other attributes from the drop-down list. They are sorted in order of data abundance.</p>
+
+<p>When a site and attribute are selected, the timeseries of measurements is plotted.  This has been reduced to monthly representative values where necessary, and may have gaps where monitoring was not consistent across time. Two lines are plotted over the monthly points: a 1-year moving median and a 5-year moving median.  These are calculated for every month in the series, and reflect the median of the previous 12 months or 60 months respectively.</p>
+
+<p>You will note that the 1-year median exhibits less range (less variation in magnitude) than the monthly measurements, and the 5-year median exhibits less range again. You can toggle the y axis to be log-scaled or naturally scaled.</p>
+
+
+<H2>Comparison before and after a nominated timepoint</H2>
+
+<p>The purpose of the app is to evaluate whether there has been relevant change in the central tendency of measures of an attribute before and after a selected timepoint, which may correspond to the time of a plan change or development in the catchment of interest.</p>
+
+<p>To evaluate for potential change, click on the timeseries plot at the nominated timepoint. This will trigger a number of computations in the background, and display the results on the plot as well as in a table below.</p>
+
+<p>The selection of a timepoint as the basis of a before/after comparison, also anchors the year-change month.  That is, if a timepoint in July of a year is selected, then the "window" for the creation of 5-year medians has its edges at Julys (and would be centred over the January between).</p>
+
+<p>As an example where a timepoint in July 2009 was selected, in a timeseries that goes back to 1999, giving ten years of history prior to the nominated changepoint, and eleven years after.  When a user selects the changepoint, the "before" period is idenftified and characterised, then the "after" period is compared to these characteristics.</p>
+
+<p>The ten-year history available in this case is divided into 5-year "epochs", ending at July 2009. This would mean the most recent 5-year epoch would run from July 2004 to July 2009, and the one before that would run July 1999 to July 2004. In this example no data is available before July 1999 to create an older historic epoch, so two historic epochs are available. Vertical dashed lines added to the plot indicate these epoch boundaries.</p>
+
+
+
+<H4>Characterisation of the "before" period</H4>
+
+<p>The before period is characterised by the median of qualifying five-year median values, at one-year spacing, from the nominated changepoint backward until any identified significant shift in monthly data.</p>
+
+<p>To identify the set of 5-year medians suitable for the characterisation of the historic "before" state, the <i>monthly</i> data is assessed and compared in half-epoch and full-epoch blocks.  It is a recognised limitation of the method embodied in this app, that this minimum resolution of evaluation, at a half-epoch level (2.5 years) limits the time-scale of fluctuation that would be detected as change within the historic period. The intra- and inter-epoch comparison is based on a two-sample Wilcoxon rank sum test (also known as a Mann-Whitney test).  This is a non-parametric rank-based sample comparison of location.  That is, it assesses for a difference in 'average' value in two groups. Average is in quotation marks here because the test does not assess for a difference in the mean value, being parametric, so 'average' is used to convery the 'locality' aspect of a distribution, as distinct from its 'scale' (spread, variance) or 'kurtosis' (skew, bias).</p>
+
+<p>The two groups being compared during this history-characterisation step are either two half-epochs (an 'intra-epoch' test) or two whole epochs (an 'inter-epoch' test).  Under the assumption of no historic change up to the nominated timepoint, these tests should be able to step back through the available epochs and find no significant differences, establishing that all available data before the nominated changepoint can be used to characterise the before period. </p>
+
+<p>A significant Wilcoxon test result (p&lt0.05, subject to all the criticisms of the use of p value thresholds to make decisions), identifying a shift within or between epochs, defines the start point of the period that characterises the recent past.  The before period should not include any 5-year medians based on uncharacteristic data, and no further historical inspection or comparison will be made.</p>
+
+<p>The establishment of the earliest monthly data-point that can be used for characterisation of the "before" period, also identifies the first 5-year median value that can contribute.  It will be five years later than the start point of the before period, for reasons outlined above.  A set of annual 5-year medians from the nominated changepoint back to this earliest qualifying 5-year median is taken, and its median and MAD calculated.  The MAD is the median absolute deviation, which becomes a bit confusing, when the values that this statistic is being calculated on, are themselves 5-year medians.  Nonetheless, the MAD is the median of the absolute values of the difference between the overall median, and each data point, and is thus a measure of the variation in a set.</p>
+
+<p>The before period has been characterised by the median of its relvant annual 5-year medians, and the MAD of these 5-year medians.  From these statistics an interval is constructed, to be used to assess the "after" period's 5-year medians.  This is similar to a confidence interval or a compliance interval.</p>
+
+<p>The width of the interval can be adjusted from the default 1.0 * MAD above and below the median, to any number between arbitrary limits of 0.0 and 10.0.  It should be noted that even within a consistent and stationary before period, a considerable proportion of 5-year medians appear outside an interval constructed with 1.0 * MAD limits, and so the appearance of a similar proportion in the "after" period does not ipso facto identify a worsening state.</p>
+
+
+<H4>Assessment of the "after" period</H4>
+
+<p>The assessment of the after period is simpler than the characterisation of the before period, in that no epoch-based comparison is made, to limit the period following the nominated changepoint.  Annual 5-year medians of monthly data after the changepoint are assessed for the inclusion within the interval, or deviation beyond it.  Depending on the attribute being inspected, then medians either higher or lower than the interval would represent a "violation".  High values of nutrient species such as nitrate nitrogen would be seen a undesirable, whereas low values of attributes such as black disc water clarity would be seen as undesirable.   5-year median values are colour-coded as red or green to indicate whether they fall beyond the undesirable limit of the assessment interval (red), or not.</p>
+
+<p>The number of 5-year medians used to characterise the before period is displayed below the plot.  The median of the before period's 5-year medians is stated, along with the upper and lower bounds, which were generated by &#177 MAD * the selected scaling factor.</p>
+
+<p>At any point the y axis can be toggled between log and natural to change the display of the analysis, and the MAD scaling factor can be altered to change the width of the evaluation interval.  Selection of a different attribute will clear the changepoint and epochs, and remove the evaluation interval.  Likewise, selection of a different site will reset the attribute, clear the changepoint and epochs, and remove the evaluation interval.</p>
+
+</body>
