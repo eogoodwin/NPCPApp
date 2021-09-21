@@ -39,9 +39,9 @@ ui <- fluidPage(
                   fluidRow(align='center',checkboxInput(inputId = 'logYaxis',
                                                      label="Log Y axis",
                                                      value = FALSE)),
-                  fluidRow(align='center',textInput(inputId = 'MADscale',
-                                                    label='MAD scale',
-                                                    value=1.0,width='80%'))
+                  fluidRow(align='center',sliderInput(inputId = 'ADpercentile',
+                                                    label='Percentile of absolute deviances (50% - 80%)',
+                                                    min=0.5,max=0.8,value=0.5,width='80%'))
            ),
            column(width=6,
                   fluidRow(htmlOutput('Results',align='center')),
@@ -56,8 +56,8 @@ ui <- fluidPage(
 
 addResourcePath('tmpuser',getwd())
 
-mad <- function(x){
-  median(abs(x-median(x,na.rm=T)),na.rm=T)
+pad <- function(xin,pin=0.5){
+  quantile(x=abs(xin-median(xin,na.rm=T)),p=as.numeric(pin),na.rm=T)
 }
 
 
@@ -69,7 +69,8 @@ server <- function(input, output,session) {
   
   uniData <- reactiveValues(siteID=NULL,subDat=NULL,longth=NULL,
                             fiveYearSkips=NULL,yearSkips=NULL,
-                            interval=NULL,MADscale=1,nInformant=NULL)
+                            interval=NULL,ADpercentile=0.5,
+                            informantDat=NULL,nInformant=NULL)
   chp <- reactiveValues(chp=NULL)
   NPCPplot.dat <- reactiveValues(main=NULL,FiveYearEpochs=NULL,chpLine=NULL,
                                  tooOldPts=NULL,beforePts=NULL,includePts=NULL,afterPts=NULL,
@@ -150,12 +151,13 @@ server <- function(input, output,session) {
                              paste(collapse=', ')))
       })
       output$curSelect <- renderText({
-        paste0(nP$SiteID,'<br>',availableMeasurements[2])
+        paste0(nP$SiteID,'<br>',availableMeasurements[1])
       })
 
-      uniData$longth <- uniData$subDat%>%filter(Measurement==availableMeasurements[2])%>%
-        mutate(Date=lubridate::dmy(Date))%>%
-        arrange(Date)
+     uniData$longth <<- uniData$subDat%>%
+         dplyr::filter(Measurement==availableMeasurements[1])%>%
+         dplyr::mutate(Date=lubridate::dmy(Date))%>%
+         dplyr::arrange(Date)
       
     }else{
       uniData$subDat <- NULL
@@ -165,7 +167,7 @@ server <- function(input, output,session) {
                         inputId = 'waVariable',label='Please select a different site',
                         choices=NULL,selected=NULL)
     }
-  })
+  },ignoreInit = T)
   
   
   #Select a variable ####
@@ -248,9 +250,9 @@ server <- function(input, output,session) {
       
       #Caculate 5yr stats ####
       longth$med5yr=NA
-      longth$MAD5=NA
+      longth$PAD5=NA
       longth$med1yr=NA
-      longth$MAD1=NA
+      longth$PAD1=NA
       for(r in seq_along(longth$med5yr)){
         within5yr = which(longth$dateNum >= (longth$dateNum[r] - 5) &
                             longth$dateNum <= (longth$dateNum[r]))
@@ -259,13 +261,13 @@ server <- function(input, output,session) {
         pass=min(longth$dateNum,na.rm=T)<(longth$dateNum[r] - 5)
         if (pass) {
           longth$med5yr[r]=median(longth$Value[within5yr], na.rm = T)
-          longth$MAD5[r]  =median(abs(longth$Value[within5yr]-longth$med5yr[r]),na.rm=T)
+          longth$PAD5[r]  =pad(xin = longth$Value[within5yr],pin = input$ADpercentile)
         }
         pass=min(longth$dateNum,na.rm=T)<(longth$dateNum[r] - 1)
         
-        if (length(within1yr)>0) {
+        if (pass) {
           longth$med1yr[r]=median(longth$Value[within1yr], na.rm = T)
-          longth$MAD1[r]  =median(abs(longth$Value[within1yr]-longth$med1yr[r]),na.rm=T)
+          longth$PAD1[r]  =pad(xin = longth$Value[within1yr],pin = input$ADpercentile)
         }
       }
 
@@ -277,17 +279,19 @@ server <- function(input, output,session) {
                   mapping = aes(x = dateNum,y = med5yr),size=0.75)+
         geom_line(data=longth%>%filter(!is.na(med1yr)),
                   mapping=aes(x=dateNum,y=med1yr),size=0.25,linetype='dashed')+
-        scale_x_continuous(breaks=seq(1980,2020,1))+
+        scale_x_continuous(breaks=seq(1980,2020,1),
+                           labels = paste0('`',stringr::str_pad(string = c(80:99,0:20),
+                                                                width = 2,side='left',pad='0')))+
         theme(panel.grid.minor=element_blank())
       
       if(input$logYaxis){
         NPCPchart <- NPCPchart + scale_y_log10()
       }
       
-      NPCPplot.dat$main <<- NPCPchart 
+      NPCPplot.dat$main = NPCPchart 
       
-      NPCPplot.dat$FiveYearEpochs<<-NULL
-      NPCPplot.dat$chpLine <<- NULL
+      NPCPplot.dat$FiveYearEpochs = NULL
+      NPCPplot.dat$chpLine = NULL
       NPCPplot.dat$tooOldPts=NULL
       NPCPplot.dat$beforePts=NULL
       NPCPplot.dat$includePts=NULL
@@ -309,20 +313,23 @@ server <- function(input, output,session) {
       uniData$longth<<-longth
       }
     }
-  })
+  },ignoreInit = T)
   
   #Toggle y axis logging
   observeEvent(input$logYaxis,{
     if(!is.null(uniData$longth)){
       #Update measurement plot ####
-      NPCPchart <-  ggplot(data = uniData$longth, mapping = aes(x = dateNum,y = Value))+
+      NPCPchart <-  ggplot(data = uniData$longth,
+                           mapping = aes(x = dateNum,y = Value))+
         labs(x = "Date",y=input$waVariable)+
         geom_point(size=1.375,shape=16)+
         geom_line(data = uniData$longth%>%filter(!is.na(med5yr)),
                   mapping = aes(x = dateNum,y = med5yr),size=0.75)+
         geom_line(data=uniData$longth%>%filter(!is.na(med1yr)),
                   mapping=aes(x=dateNum,y=med1yr),size=0.25,linetype='dashed')+
-        scale_x_continuous(breaks=seq(1980,2020,1))+
+        scale_x_continuous(breaks=seq(1980,2020,1),
+                           labels = paste0('`',stringr::str_pad(string = c(80:99,0:20),
+                                                                width = 2,side='left',pad='0')))+
         theme(panel.grid.minor=element_blank())
       
       if(input$logYaxis){
@@ -331,8 +338,8 @@ server <- function(input, output,session) {
       
       NPCPplot.dat$main <<- NPCPchart 
       
-
-            output$NPCPplot <- renderPlot({
+      
+      output$NPCPplot <- renderPlot({
         NPCPplot.dat$main + NPCPplot.dat$FiveYearEpochs + NPCPplot.dat$chpLine + NPCPplot.dat$tooOldPts +
           NPCPplot.dat$beforePts + NPCPplot.dat$includePts + NPCPplot.dat$afterPts +
           NPCPplot.dat$hiMedian + NPCPplot.dat$medianMedian + NPCPplot.dat$loMedian +
@@ -342,24 +349,32 @@ server <- function(input, output,session) {
     }
   },ignoreInit=TRUE)
   
-  
-  
-  #Change scale of MAD interval
-  observeEvent(input$MADscale,{
-    if(!is.na(as.numeric(input$MADscale)) & !is.null(uniData$interval)){
-      if(as.numeric(input$MADscale)>0 & as.numeric(input$MADscale)<=2){
-        uniData$MADscale = as.numeric(input$MADscale)
-        if("Hi"%in%names(uniData$interval)){
-          uniData$interval$Hi = uniData$interval$median+uniData$interval$MAD*uniData$MADscale
-          uniData$interval$Lo = uniData$interval$median-uniData$interval$MAD*uniData$MADscale
+  #Change scale of PAD interval ####
+  observeEvent(input$ADpercentile,{
+    inputADpercentile <- as.numeric(input$ADpercentile)
+    if(!is.na(inputADpercentile) & !is.null(uniData$interval)){
+      if(inputADpercentile>40 & inputADpercentile<90){
+        inputADpercentile=inputADpercentile/100
+      }
+      if(inputADpercentile>=0.45 & inputADpercentile<=0.85){
+        uniData$ADpercentile = inputADpercentile
+        rm(inputADpercentile)
         
+        if("Hi"%in%names(uniData$interval)){
+          uniData$interval = data.frame(median = median(uniData$informantDat$med5yr,na.rm=T),
+                                        PAD = pad(uniData$informantDat$med5yr,pin = uniData$ADpercentile))
+          uniData$interval$Hi = uniData$interval$median+uniData$interval$PAD
+          uniData$interval$Lo = uniData$interval$median-uniData$interval$PAD
+
         if(!is.na(uniData$interval$Hi)){
           output$Results = renderText({
-            paste("Number of five-year medians before selected time:",
+            paste("Selected timepoint:",round.POSIXt(lubridate::date_decimal(chp$chp),units = 'days'),'<br>',
+                  "Number of five-year medians before selected time:",
                   uniData$nInformant,'<br>',
                   "Median of five-year medians before selected time:",round(uniData$interval$median,3),'<br>',
                   "Upper bound of these five-year medians:",round(uniData$interval$Hi,3),'<br>',
-                  "Lower bound of these five-year medians:",round(uniData$interval$Lo,3))
+                  "Lower bound of these five-year medians:",round(uniData$interval$Lo,3),'<br>',
+                  uniData$ADpercentile*100,"Percentile absolute deviation:",round(uniData$interval$PAD,3))
           })
           NPCPplot.dat$hiMedian <<-
             geom_hline(data=uniData$interval,mapping=aes(yintercept=Hi),linetype='dashed',colour='green4')
@@ -464,34 +479,34 @@ server <- function(input, output,session) {
           oneoftwo = secondSet[1:floor(length(secondSet)/2)]
           twooftwo = secondSet[(1+floor(length(secondSet)/2)):length(secondSet)]
           beforeChp = c(beforeChp,twooftwo)
-          wttwo = try({wilcox.test(x=uniData$longth$Value[oneoftwo],
-                                                y=uniData$longth$Value[twooftwo],alternative='two',conf.int=T)},silent = T)
-          if('try-error'%in%attr(wttwo,'class')){
-            stopnomore=T
-            break
-          }else{
-            wttwosig = ((3-as.numeric(cut(wttwo$p.value,breaks = c(-0.01, 0.01, 0.05, 0.1, 1.1)))))
-            if(wttwosig>=1){
-              l8Dat = data.frame(x=median(uniData$longth$dateNum[oneoftwo],na.rm=T),
-                                 xend=median(uniData$longth$dateNum[twooftwo],na.rm=T),
-                                 y=median(uniData$longth$Value[oneoftwo],na.rm=T),
-                                 yend=median(uniData$longth$Value[twooftwo],na.rm=T))
-              NPCPplot.dat$layer8 <<- 
-                geom_segment(data=l8Dat,mapping=aes(x=x,xend=xend,y=y,yend=yend),
-                             size=wttwosig/5,
-                             colour='magenta')
-            }else{
-              NPCPplot.dat$layer8<<-NULL
-            }
-            if(wttwo$p.value<0.05){
+          # wttwo = try({wilcox.test(x=uniData$longth$Value[oneoftwo],
+          #                                       y=uniData$longth$Value[twooftwo],alternative='two',conf.int=T)},silent = T)
+          # if('try-error'%in%attr(wttwo,'class')){
+          #   stopnomore=T
+          #   break
+          # }else{
+          #   wttwosig = ((3-as.numeric(cut(wttwo$p.value,breaks = c(-0.01, 0.01, 0.05, 0.1, 1.1)))))
+          #   if(wttwosig>=2){
+          #     l8Dat = data.frame(x=median(uniData$longth$dateNum[oneoftwo],na.rm=T),
+          #                        xend=median(uniData$longth$dateNum[twooftwo],na.rm=T),
+          #                        y=median(uniData$longth$Value[oneoftwo],na.rm=T),
+          #                        yend=median(uniData$longth$Value[twooftwo],na.rm=T))
+          #     NPCPplot.dat$layer8 <<-
+          #       geom_segment(data=l8Dat,mapping=aes(x=x,xend=xend,y=y,yend=yend),
+          #                    size=wttwosig/5,
+          #                    colour='magenta')
+          #   }else{
+          #     NPCPplot.dat$layer8<<-NULL
+          #   }
+          #   if(wttwo$p.value<0.01){
+          #     rm(wttwo,oneoftwo,twooftwo)
+          #     stopnomore=T
+          #     break
+          #   }else{
+             beforeChp=c(beforeChp,oneoftwo)
               rm(wttwo,oneoftwo,twooftwo)
-              stopnomore=T
-              break
-            }else{
-              beforeChp=c(beforeChp,oneoftwo)
-              rm(wttwo,oneoftwo,twooftwo)
-            }
-          }
+            # }
+          # }
         }
         if(length(firstSet)>0){
           #Between Epochs
@@ -503,7 +518,7 @@ server <- function(input, output,session) {
           break
         }else{
           wtsig=((3-as.numeric(cut(wt$p.value,breaks = c(-0.01, 0.01, 0.05, 0.1, 1.1)))))
-          if(wtsig>=1){
+          if(wtsig>=2){
             l9Dat=data.frame(x = median(uniData$longth$dateNum[firstSet],na.rm=T),
                              xend = median(uniData$longth$dateNum[secondSet],na.rm=T),
                              y = median(uniData$longth$Value[firstSet],na.rm=T),
@@ -515,7 +530,7 @@ server <- function(input, output,session) {
           }else{
             NPCPplot.dat$layer9<<-NULL
           }
-          if(wt$p.value<0.05){
+          if(wt$p.value<0.01){
             stopnomore=T
             break
           }
@@ -557,19 +572,22 @@ server <- function(input, output,session) {
           geom_point(data=informantDat,mapping=aes(x=dateNum,y=med5yr),col='blue',size=3.5,shape=16)
         
         uniData$interval = data.frame(median = median(informantDat$med5yr,na.rm=T),
-                                      MAD = median(abs(informantDat$med5yr-
-                                                         median(informantDat$med5yr,na.rm=T)),na.rm=T))
-        uniData$interval$Hi = uniData$interval$median+uniData$interval$MAD*uniData$MADscale
-        uniData$interval$Lo = uniData$interval$median-uniData$interval$MAD*uniData$MADscale
+                                      PAD = pad(xin = informantDat$med5yr,pin = uniData$ADpercentile))
+        uniData$interval$Hi = uniData$interval$median+uniData$interval$PAD
+        uniData$interval$Lo = uniData$interval$median-uniData$interval$PAD
         uniData$nInformant=dim(informantDat)[1]
+        
+        uniData$informantDat <<- informantDat
         rm(informantDat)
+        
         output$Results = renderText({
           paste("Selected timepoint:",round.POSIXt(lubridate::date_decimal(chp$chp),units = 'days'),'<br>',
-            "Number of five-year medians before selected time:",
+                "Number of five-year medians before selected time:",
                 uniData$nInformant,'<br>',
                 "Median of five-year medians before selected time:",round(uniData$interval$median,3),'<br>',
                 "Upper bound of these five-year medians:",round(uniData$interval$Hi,3),'<br>',
-                "Lower bound of these five-year medians:",round(uniData$interval$Lo,3))
+                "Lower bound of these five-year medians:",round(uniData$interval$Lo,3),'<br>',
+                uniData$ADpercentile*100,"Percentile absolute deviation:",round(uniData$interval$PAD,3))
         })
         NPCPplot.dat$hiMedian <<-
           geom_hline(data=uniData$interval,mapping=aes(yintercept=Hi),linetype='dashed',colour='green4')
@@ -671,7 +689,7 @@ server <- function(input, output,session) {
              bty = 'n')
     })
     
-  })
+  },ignoreInit=T)
   
 }#end of server definition
 
